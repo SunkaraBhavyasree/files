@@ -1,0 +1,69 @@
+import numpy as np
+import tensorflow as tf
+from tensorflow.keras.applications import InceptionV3
+from tensorflow.keras.models import Model
+from tensorflow.keras.preprocessing import image
+from tensorflow.keras.preprocessing.sequence import pad_sequences
+from tensorflow.keras.preprocessing.text import Tokenizer
+from tensorflow.keras.layers import Embedding, LSTM, Dense, Dropout, add
+from tensorflow.keras.utils import to_categorical
+from tensorflow.keras.models import load_model
+
+# Load the InceptionV3 model and pretrained weights
+inception_model = InceptionV3(weights='imagenet')
+inception_model = Model(inception_model.input, inception_model.layers[-2].output)
+
+def preprocess_image(img_path):
+    img = image.load_img(img_path, target_size=(299, 299))
+    img = image.img_to_array(img)
+    img = np.expand_dims(img, axis=0)
+    img = tf.keras.applications.inception_v3.preprocess_input(img)
+    return img
+
+def encode_image(img_path):
+    img = preprocess_image(img_path)
+    feature_vector = inception_model.predict(img)
+    feature_vector = np.reshape(feature_vector, feature_vector.shape[1])
+    return feature_vector
+
+# Load tokenizer
+tokenizer = Tokenizer()
+tokenizer.fit_on_texts(["<start> a man riding a horse <end>", "<start> a woman cooking food <end>", "<start> a child playing in the park <end>"]) # Example texts
+
+vocab_size = len(tokenizer.word_index) + 1
+max_length = 34
+
+def map_token_to_word(integer):
+    for word, index in tokenizer.word_index.items():
+        if index == integer:
+            return word
+    return None
+
+# Load pre-trained model
+caption_model = load_model('path_to_trained_caption_model.h5')
+
+def generate_caption(photo):
+    in_text = '<start>'
+    for i in range(max_length):
+        sequence = tokenizer.texts_to_sequences([in_text])[0]
+        sequence = pad_sequences([sequence], maxlen=max_length)
+        yhat = caption_model.predict([photo,sequence], verbose=0)
+        yhat = np.argmax(yhat)
+        word = map_token_to_word(yhat)
+        if word is None:
+            break
+        in_text += ' ' + word
+        if word == '<end>':
+            break
+    return in_text
+
+def caption_image(img_path):
+    encoded_img = encode_image(img_path)
+    encoded_img = np.reshape(encoded_img, (1, 2048))
+    caption = generate_caption(encoded_img)
+    return caption
+
+# Example usage
+img_path = 'example.jpg'
+caption = caption_image(img_path)
+print("Caption:", caption)
